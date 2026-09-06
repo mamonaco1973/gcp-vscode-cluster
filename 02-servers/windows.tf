@@ -27,7 +27,7 @@ resource "random_password" "sysadmin_password" {
 }
 
 resource "google_secret_manager_secret" "sysadmin_secret" {
-  secret_id = "sysadmin-ad-credentials-rstudio"
+  secret_id = "sysadmin-ad-credentials-vscode"
 
   replication {
     auto {}
@@ -51,7 +51,7 @@ resource "google_secret_manager_secret_version" "admin_secret_version" {
 # ==============================================================================
 
 resource "google_compute_firewall" "allow_rdp" {
-  name    = "rstudio-allow-rdp"
+  name    = "vscode-allow-rdp"
   network = var.vpc
 
   allow {
@@ -59,7 +59,7 @@ resource "google_compute_firewall" "allow_rdp" {
     ports    = ["3389"]
   }
 
-  target_tags   = ["rstudio-allow-rdp"] # Applies only to tagged instances
+  target_tags   = ["vscode-allow-rdp"] # Applies only to tagged instances
   source_ranges = ["0.0.0.0/0"] # Lab only; restrict for production
 }
 
@@ -101,7 +101,7 @@ resource "google_compute_instance" "windows_ad_instance" {
   # Startup Script (Domain Join)
   metadata = {
     windows-startup-script-ps1 = templatefile("./scripts/ad_join.ps1", {
-      domain_fqdn = "rstudio.mikecloud.com"
+      domain_fqdn = "vscode.mikecloud.com"
       nfs_gateway = google_compute_instance.nfs_gateway_instance.network_interface[0].network_ip
     })
 
@@ -110,7 +110,7 @@ resource "google_compute_instance" "windows_ad_instance" {
   }
 
   # Firewall Tags
-  tags = ["rstudio-allow-rdp"] # Applies RDP firewall rule
+  tags = ["vscode-allow-rdp"] # Applies RDP firewall rule
 }
 
 

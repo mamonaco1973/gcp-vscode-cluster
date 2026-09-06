@@ -1,6 +1,6 @@
 #!/bin/bash
 # ==============================================================================
-# Destroy Pipeline Script: Mini-AD + RStudio Cluster on GCP
+# Destroy Pipeline Script: Mini-AD + VS Code Cluster on GCP
 # ------------------------------------------------------------------------------
 # Purpose:
 #   - Tear down infrastructure in reverse order
@@ -12,20 +12,20 @@ set -e  # Exit immediately on unhandled command failure
 
 
 # ==============================================================================
-# Phase 1: RStudio Cluster Teardown
+# Phase 1: VS Code Cluster Teardown
 # ------------------------------------------------------------------------------
 # Purpose:
-#   - Destroy cluster using latest RStudio image name
+#   - Destroy cluster using latest VS Code image name
 # ==============================================================================
 
-rstudio_image=$(gcloud compute images list \
-  --filter="name~'^rstudio-image' AND family=rstudio-images" \
+vscode_image=$(gcloud compute images list \
+  --filter="name~'^vscode-image' AND family=vscode-images" \
   --sort-by="~creationTimestamp" \
   --limit=1 \
   --format="value(name)")
 
-if [[ -z "$rstudio_image" ]]; then
-  echo "ERROR: No latest image found for 'rstudio-image' in family 'rstudio-images'."
+if [[ -z "$vscode_image" ]]; then
+  echo "ERROR: No latest image found for 'vscode-image' in family 'vscode-images'."
   exit 1
 fi
 
@@ -33,7 +33,7 @@ cd 04-cluster
 
 terraform init
 terraform destroy \
-  -var="rstudio_image_name=$rstudio_image" \
+  -var="vscode_image_name=$vscode_image" \
   -auto-approve
 
 cd ..
@@ -42,17 +42,17 @@ cd ..
 # Phase 2: Custom Image Cleanup
 # ------------------------------------------------------------------------------
 # Purpose:
-#   - Delete Packer-built images with rstudio prefix (best-effort)
+#   - Delete Packer-built images with vscode prefix (best-effort)
 # ==============================================================================
 
-echo "NOTE: Fetching images starting with 'rstudio' to delete..."
+echo "NOTE: Fetching images starting with 'vscode' to delete..."
 
 image_list=$(gcloud compute images list \
   --format="value(name)" \
-  --filter="name~'^(rstudio)'")
+  --filter="name~'^(vscode)'")
 
 if [ -z "$image_list" ]; then
-  echo "NOTE: No images found starting with 'rstudio'. Nothing to delete."
+  echo "NOTE: No images found starting with 'vscode'. Nothing to delete."
 else
   echo "NOTE: Deleting images..."
   for image in $image_list; do

@@ -8,7 +8,7 @@ chmod 600 "$LOG"
 exec > >(tee -a "$LOG" | logger -t startup-script -s 2>/dev/console) 2>&1
 trap 'echo "ERROR at line $LINENO"; exit 1' ERR
 
-FLAG_FILE="/root/.rstudio_provisioned"
+FLAG_FILE="/root/.vscode_provisioned"
 
 # Prevent infinite loop
 if [ -f "$FLAG_FILE" ]; then
@@ -22,7 +22,9 @@ echo "${nfs_server_ip}:/filestore /nfs nfs vers=3,rw,hard,noatime,rsize=65536,ws
 | sudo tee -a /etc/fstab
 systemctl daemon-reload
 mount /nfs
-mkdir -p /nfs/home /nfs/data /nfs/rlibs
+# /nfs/extensions is the shared VSIX staging area -- extensions that are
+# not on Open VSX are dropped there as files and installed from disk.
+mkdir -p /nfs/home /nfs/data /nfs/extensions
 
 # Map /home to NFS
 echo "${nfs_server_ip}:/filestore/home /home nfs vers=3,rw,hard,noatime,rsize=65536,wsize=65536,timeo=600,_netdev 0 0" \
@@ -31,7 +33,7 @@ systemctl daemon-reload
 mount /home
 
 # Join Active Directory domain
-secretValue=$(gcloud secrets versions access latest --secret="admin-ad-credentials-rstudio")
+secretValue=$(gcloud secrets versions access latest --secret="admin-ad-credentials-vscode")
 admin_password=$(echo $secretValue | jq -r '.password')
 admin_username=$(echo $secretValue | jq -r '.username' | sed 's/.*\\//')
 echo -e "$admin_password" | sudo /usr/sbin/realm join -U "$admin_username" \
@@ -59,8 +61,6 @@ chmod 600 /etc/skel/.Xauthority
 sudo pam-auth-update --enable mkhomedir
 sudo systemctl restart ssh
 sudo systemctl restart sssd
-sudo systemctl restart rstudio-server
-sudo systemctl enable rstudio-server
 
 # Grant sudo privileges to AD admin group
 echo "%linux-admins ALL=(ALL) NOPASSWD:ALL" | sudo tee /etc/sudoers.d/10-linux-admins
@@ -68,19 +68,33 @@ echo "%linux-admins ALL=(ALL) NOPASSWD:ALL" | sudo tee /etc/sudoers.d/10-linux-a
 # Enforce home directory permissions
 sudo sed -i 's/^\(\s*HOME_MODE\s*\)[0-9]\+/\10700/' /etc/login.defs
 
-# Configure R library paths
-cat <<'EOF' | sudo tee /usr/lib/R/etc/Rprofile.site > /dev/null
-local({
-  userlib <- Sys.getenv("R_LIBS_USER")
-  if (!dir.exists(userlib)) {
-    dir.create(userlib, recursive = TRUE, showWarnings = FALSE)
-  }
-  nfs <- "/nfs/rlibs"
-  .libPaths(c(userlib, nfs, .libPaths()))
-})
+# ------------------------------------------------------------------------------
+# Session broker
+# ------------------------------------------------------------------------------
+# Per-user editor state (SQLite) stays on instance-local disk. Filestore is
+# NFSv3 and SQLite over NFS is the classic corruption case -- only user FILES
+# belong on the share. Cost: editor layout is lost when a node is replaced.
+mkdir -p /var/lib/vscode
+chmod 0751 /var/lib/vscode
+
+cat <<EOF | sudo tee /etc/vscode-broker.env > /dev/null
+BROKER_PORT=8080
+REQUIRED_GROUP=${force_group}
+SESSION_IDLE_MINUTES=120
+PORT_RANGE_START=9000
+PORT_RANGE_END=9500
+VSCODE_STATE_ROOT=/var/lib/vscode
 EOF
 
-chgrp rstudio-admins /nfs/rlibs
-
+# Written before the broker starts, not after. Everything above this line is
+# one-shot and survives a reboot on its own -- the mounts are in /etc/fstab
+# and the domain join is on disk. If the broker fails to come up, a reboot
+# must NOT re-run realm join against an already-joined machine.
 uptime
 touch "$FLAG_FILE"
+
+# Enabled only now that SSSD can resolve AD users. Enabling it in the image
+# would let the load balancer mark the node healthy before any login could
+# possibly succeed.
+sudo systemctl enable vscode-broker
+sudo systemctl restart vscode-broker

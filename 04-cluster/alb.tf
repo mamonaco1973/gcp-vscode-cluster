@@ -1,10 +1,15 @@
 # ==============================================================================
-# HTTP Load Balancer: Global IP, Backend Service, URL Map, Proxy, Forwarding Rule
+# HTTPS Load Balancer: Global IP, Backend Service, URL Map, Proxies, Rules
 # ------------------------------------------------------------------------------
 # Purpose:
-#   - Reserve static global IP for HTTP load balancer
-#   - Route HTTP/80 to backend service via URL map and target proxy
-#   - Distribute traffic to RStudio instance group with health checks
+#   - Reserve static global IP for the load balancer
+#   - Terminate TLS with the self-signed certificate from tls.tf
+#   - Redirect port 80 to 443 -- nothing is served in cleartext
+#   - Distribute traffic to the VS Code instance group with health checks
+#
+# Nothing is served over plain HTTP. Cleartext is what lets ISP filters
+# classify the sign-in page as phishing and lets carriers interfere with the
+# WebSocket upgrade code-server depends on. See tls.tf.
 # ==============================================================================
 
 
@@ -17,7 +22,7 @@
 # ==============================================================================
 
 resource "google_compute_global_address" "lb_ip" {
-  name = "rstudio-lb-ip"
+  name = "vscode-lb-ip"
 }
 
 
@@ -25,19 +30,24 @@ resource "google_compute_global_address" "lb_ip" {
 # Backend Service
 # ------------------------------------------------------------------------------
 # Purpose:
-#   - Define backend service for RStudio instance group
+#   - Define backend service for VS Code instance group
 #   - Use health checks to gate traffic to healthy backends
 # ==============================================================================
 
 resource "google_compute_backend_service" "backend_service" {
-  name          = "rstudio-backend-service"
+  name          = "vscode-backend-service"
   protocol      = "HTTP"
   port_name     = "http" # Must match named port in MIG
   health_checks = [google_compute_health_check.http_health_check.self_link]
 
-  timeout_sec           = 10
+  # NOT a request timeout -- on a GCP backend service this bounds the whole
+  # stream, and code-server holds one WebSocket open for the life of the
+  # session. At the default the editor disconnects every few seconds.
+  timeout_sec           = 86400
   load_balancing_scheme = "EXTERNAL"
 
+  # Mandatory, not an optimization: a user's code-server process runs on one
+  # node only, so every request has to come back to the same node.
   session_affinity        = "GENERATED_COOKIE"
   affinity_cookie_ttl_sec = 86400 # 1 day
 
@@ -68,41 +78,76 @@ resource "time_sleep" "wait_for_healthcheck" {
 # ------------------------------------------------------------------------------
 # Purpose:
 #   - Route incoming requests to backend service
-#   - Default sends all traffic to RStudio backend
+#   - Default sends all traffic to VS Code backend
 # ==============================================================================
 
 resource "google_compute_url_map" "url_map" {
-  name            = "rstudio-alb"
+  name            = "vscode-alb"
   default_service = google_compute_backend_service.backend_service.self_link
 }
 
 
 # ==============================================================================
-# Target HTTP Proxy
+# URL Map: HTTP to HTTPS Redirect
 # ------------------------------------------------------------------------------
 # Purpose:
-#   - Terminate HTTP and forward to URL map
+#   - Bounce every cleartext request to the HTTPS endpoint
+#   - Carries no backend of its own
 # ==============================================================================
 
-resource "google_compute_target_http_proxy" "http_proxy" {
-  name    = "rstudio-http-proxy"
-  url_map = google_compute_url_map.url_map.id
+resource "google_compute_url_map" "redirect" {
+  name = "vscode-redirect"
+
+  default_url_redirect {
+    https_redirect         = true
+    redirect_response_code = "MOVED_PERMANENTLY_DEFAULT"
+    strip_query            = false
+  }
 }
 
 
 # ==============================================================================
-# Global Forwarding Rule
+# Target Proxies
 # ------------------------------------------------------------------------------
 # Purpose:
-#   - Expose HTTP/80 entry point using static global IP
-#   - Forward traffic to target HTTP proxy
+#   - Terminate TLS at the LB and forward plain HTTP to the broker in the VPC
+#   - The broker itself needs no TLS configuration
 # ==============================================================================
 
-resource "google_compute_global_forwarding_rule" "forwarding_rule" {
-  name       = "rstudio-http-forwarding-rule"
+resource "google_compute_target_https_proxy" "https_proxy" {
+  name             = "vscode-https-proxy"
+  url_map          = google_compute_url_map.url_map.id
+  ssl_certificates = [google_compute_ssl_certificate.lb.id]
+}
+
+resource "google_compute_target_http_proxy" "http_proxy" {
+  name    = "vscode-http-proxy"
+  url_map = google_compute_url_map.redirect.id
+}
+
+
+# ==============================================================================
+# Global Forwarding Rules
+# ------------------------------------------------------------------------------
+# Purpose:
+#   - Expose 443 for the editor and 80 purely to redirect to it
+#   - Both share the one reserved static IP
+# ==============================================================================
+
+resource "google_compute_global_forwarding_rule" "https_forwarding_rule" {
+  name       = "vscode-https-forwarding-rule"
+  ip_address = google_compute_global_address.lb_ip.address
+  target     = google_compute_target_https_proxy.https_proxy.self_link
+
+  port_range            = "443"
+  load_balancing_scheme = "EXTERNAL"
+}
+
+resource "google_compute_global_forwarding_rule" "http_forwarding_rule" {
+  name       = "vscode-http-forwarding-rule"
   ip_address = google_compute_global_address.lb_ip.address
   target     = google_compute_target_http_proxy.http_proxy.self_link
 
-  port_range            = "80"       # Listen on port 80 (HTTP)
-  load_balancing_scheme = "EXTERNAL" # External-facing LB
+  port_range            = "80"
+  load_balancing_scheme = "EXTERNAL"
 }

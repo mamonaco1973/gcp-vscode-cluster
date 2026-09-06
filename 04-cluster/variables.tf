@@ -9,13 +9,13 @@
 variable "vpc_name" {
   description = "Name of the existing VPC network"
   type        = string
-  default     = "rstudio-vpc"
+  default     = "vscode-vpc"
 }
 
 variable "subnet_name" {
   description = "Name of the existing subnetwork"
   type        = string
-  default     = "rstudio-subnet"
+  default     = "vscode-subnet"
 }
 
 
@@ -23,17 +23,17 @@ variable "subnet_name" {
 # Input Variables: Packer Image
 # ------------------------------------------------------------------------------
 # Purpose:
-#   - Accept name of Packer-built RStudio image
+#   - Accept name of Packer-built VS Code image
 #   - Lookup image metadata dynamically in GCP
 # ==============================================================================
 
-variable "rstudio_image_name" {
-  description = "Name of the Packer-built RStudio image"
+variable "vscode_image_name" {
+  description = "Name of the Packer-built VS Code image"
   type        = string
 }
 
-data "google_compute_image" "rstudio_packer_image" {
-  name    = var.rstudio_image_name       # Image name provided by variable
+data "google_compute_image" "vscode_packer_image" {
+  name    = var.vscode_image_name        # Image name provided by variable
   project = local.credentials.project_id # Use project from decoded credentials
 }
 
@@ -47,25 +47,25 @@ data "google_compute_image" "rstudio_packer_image" {
 # ==============================================================================
 
 variable "dns_zone" {
-  description = "AD DNS zone / domain (e.g., rstudio.mikecloud.com)"
+  description = "AD DNS zone / domain (e.g., vscode.mikecloud.com)"
   type        = string
-  default     = "rstudio.mikecloud.com"
+  default     = "vscode.mikecloud.com"
 }
 
 variable "realm" {
   description = "Kerberos realm (usually DNS zone in UPPERCASE)"
   type        = string
-  default     = "RSTUDIO.MIKECLOUD.COM"
+  default     = "VSCODE.MIKECLOUD.COM"
 }
 
 variable "netbios" {
-  description = "NetBIOS short domain name (e.g., RSTUDIO)"
+  description = "NetBIOS short domain name (e.g., VSCODE)"
   type        = string
-  default     = "RSTUDIO"
+  default     = "VSCODE"
 }
 
 variable "user_base_dn" {
-  description = "User base DN (e.g., CN=Users,DC=rstudio,DC=mikecloud,DC=com)"
+  description = "User base DN (e.g., CN=Users,DC=vscode,DC=mikecloud,DC=com)"
   type        = string
-  default     = "CN=Users,DC=rstudio,DC=mikecloud,DC=com"
+  default     = "CN=Users,DC=vscode,DC=mikecloud,DC=com"
 }

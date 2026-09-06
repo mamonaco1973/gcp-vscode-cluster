@@ -65,7 +65,7 @@ mount /home                                          # Mount /home from NFS
 # ---------------------------------------------------------------------------------
 
 # Pull AD admin credentials from GCP Secret Manager
-secretValue=$(gcloud secrets versions access latest --secret="admin-ad-credentials-rstudio")
+secretValue=$(gcloud secrets versions access latest --secret="admin-ad-credentials-vscode")
 admin_password=$(echo $secretValue | jq -r '.password')      # Extract password
 admin_username=$(echo $secretValue | jq -r '.username' | sed 's/.*\\//') # Extract username w/o domain
 
@@ -234,9 +234,9 @@ chmod 700 /home/*
 
 # Clone helper repo into /nfs and apply group permissions
 cd /nfs
-git clone https://github.com/mamonaco1973/gcp-rstudio-cluster.git
-chmod -R 775 gcp-rstudio-cluster
-chgrp -R rstudio-users gcp-rstudio-cluster
+git clone https://github.com/mamonaco1973/gcp-vscode-cluster.git
+chmod -R 775 gcp-vscode-cluster
+chgrp -R vscode-users gcp-vscode-cluster
 
 uptime >> /root/userdata.log 2>&1
 touch "$FLAG_FILE"

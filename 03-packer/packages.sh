@@ -23,36 +23,19 @@ apt-get install -y less unzip realmd sssd-ad sssd-tools libnss-sss \
     oddjob-mkhomedir packagekit krb5-user nano vim stunnel4 \
     nfs-common  
 
-echo "=== Phase 2: Core build chain for R ==="  
-apt-get install -y build-essential gfortran python3-pip \
-    libxml2-dev libcurl4-openssl-dev libssl-dev cmake
+echo "=== Phase 2: Build chain ==="
+# Kept because VS Code extensions routinely compile native modules on
+# install. The R/spatial/HDF5 stacks the RStudio image carried are gone --
+# nothing in this build links against them, and they cost several minutes
+# per image build.
+apt-get install -y build-essential python3-pip python3-venv python3-dev \
+    libxml2-dev libcurl4-openssl-dev libssl-dev cmake git
 
-echo "=== Phase 3: Math & compression libraries ==="  
-apt-get install -y libgsl-dev libblas-dev liblapack-dev \
-    zlib1g-dev libbz2-dev liblzma-dev  
-
-echo "=== Phase 4: Graphics & text stack ==="  
-apt-get install -y libcairo2-dev libxt-dev libx11-dev libxpm-dev \
-    libfreetype6-dev libharfbuzz-dev libfribidi-dev  \
-    libglu1-mesa-dev freeglut3-dev mesa-common-dev libabsl-dev
-
-echo "=== Phase 5: Database & spatial libraries ==="  
-apt-get install -y libsqlite3-dev libpq-dev libmariadb-dev \
-    libmariadb-dev-compat libudunits2-dev libgeos-dev libproj-dev  
-
-echo "=== Phase 6: Extra formats and science libs ==="  
-apt-get install -y libmagick++-dev libpoppler-cpp-dev \
-    libhdf5-dev libnetcdf-dev default-jdk  
-
-# echo "=== Phase 7: LaTeX (optional, heavy) ==="  
-# apt-get install -y texlive-latex-base texlive-fonts-recommended \
-#     texlive-fonts-extra texlive-latex-extra  
-
-echo "=== Phase 8: Clean up ==="  
+echo "=== Phase 3: Clean up ==="  
 apt-get autoremove -y  
 apt-get clean  
 
-echo "=== Userdata completed successfully ==="   
+echo "=== Package installation completed successfully ==="   
 
 
 

@@ -1,11 +1,12 @@
 #!/bin/bash
 # ==============================================================================
-# validate.sh - RStudio Quick Start Validation (GCP)
+# validate.sh - VS Code Quick Start Validation (GCP)
 # ------------------------------------------------------------------------------
 # Purpose:
 #   - Print external IPs for NFS gateway and Windows AD host
-#   - Fetch global LB IP and verify /auth-sign-in returns HTTP 200
-#   - Scope instance lookups to VPC: rstudio-vpc
+#   - Fetch global LB IP and verify /healthz returns HTTP 200 over HTTPS
+#   - Export the self-signed certificate for import on client machines
+#   - Scope instance lookups to VPC: vscode-vpc
 # ==============================================================================
 
 set -euo pipefail
@@ -13,10 +14,10 @@ set -euo pipefail
 # ------------------------------------------------------------------------------
 # Configuration
 # ------------------------------------------------------------------------------
-VPC_NAME="rstudio-vpc"
+VPC_NAME="vscode-vpc"
 NFS_PREFIX="nfs-gateway"
 WIN_PREFIX="win-ad"
-LB_NAME="rstudio-lb-ip"
+LB_NAME="vscode-lb-ip"
 
 CHECK_INTERVAL=60
 MAX_RETRIES=30
@@ -46,9 +47,11 @@ get_global_address_ip() {
     --format="value(address)" 2>/dev/null | gcloud_trim
 }
 
+# -k is required, not sloppy: the LB presents a self-signed certificate by
+# design (see 04-cluster/tls.tf). Verification is exactly what we cannot do.
 get_http_code() {
   local url="$1"
-  curl -o /dev/null -s -w "%{http_code}" "${url}" || true
+  curl -k -o /dev/null -s -w "%{http_code}" "${url}" || true
 }
 
 # ------------------------------------------------------------------------------
@@ -57,8 +60,8 @@ get_http_code() {
 NFS_IP="$(get_instance_nat_ip_by_prefix_and_vpc "${NFS_PREFIX}" "${VPC_NAME}")"
 WIN_IP="$(get_instance_nat_ip_by_prefix_and_vpc "${WIN_PREFIX}" "${VPC_NAME}")"
 
-RSTUDIO_LB_IP="$(get_global_address_ip "${LB_NAME}")"
-if [[ -z "${RSTUDIO_LB_IP}" ]]; then
+VSCODE_LB_IP="$(get_global_address_ip "${LB_NAME}")"
+if [[ -z "${VSCODE_LB_IP}" ]]; then
   echo "ERROR: Failed to retrieve the load balancer IP address. Exiting."
   exit 1
 fi
@@ -66,9 +69,9 @@ fi
 # ------------------------------------------------------------------------------
 # Wait for Load Balancer Availability
 # ------------------------------------------------------------------------------
-URL="http://${RSTUDIO_LB_IP}/auth-sign-in"
+URL="https://${VSCODE_LB_IP}/healthz"
 
-echo "NOTE: Waiting for load balancer to return HTTP 200 on /auth-sign-in..."
+echo "NOTE: Waiting for load balancer to return HTTP 200 on /healthz..."
 
 for ((i = 1; i <= MAX_RETRIES; i++)); do
   HTTP_CODE="$(get_http_code "${URL}")"
@@ -91,7 +94,7 @@ done
 # ------------------------------------------------------------------------------
 echo ""
 echo "============================================================================"
-echo "RStudio Quick Start - Validation Output (GCP)"
+echo "VS Code Quick Start - Validation Output (GCP)"
 echo "============================================================================"
 echo ""
 
@@ -100,7 +103,31 @@ printf "%-28s %s\n" "NOTE: Windows RDP Host:" "${WIN_IP:-<not found>}"
 
 echo ""
 
-printf "%-28s %s\n" "NOTE: RStudio URL:"      "http://${RSTUDIO_LB_IP}"
+printf "%-28s %s\n" "NOTE: VS Code URL:"      "https://${VSCODE_LB_IP}"
+
+echo ""
+
+# ------------------------------------------------------------------------------
+# Client Certificate
+# ------------------------------------------------------------------------------
+# Clicking through the browser warning is enough to sign in, but not enough
+# to work: without a trusted certificate there is no secure context, Chrome
+# will not register a service worker, and every VS Code webview -- markdown
+# preview, the settings UI, most extension panels -- renders blank. Import
+# this file once per client machine.
+CERT_FILE="vscode-lb.crt"
+
+if terraform -chdir=04-cluster output -raw vscode_certificate_pem \
+     > "${CERT_FILE}" 2>/dev/null && [[ -s "${CERT_FILE}" ]]; then
+  printf "%-28s %s\n" "NOTE: Certificate written:" "${CERT_FILE}"
+  echo ""
+  echo "NOTE: Trust it before use, or webviews will render blank:"
+  echo "NOTE:   Windows: certutil -addstore -user Root ${CERT_FILE}"
+  echo "NOTE:   macOS:   security add-trusted-cert -d -r trustRoot ${CERT_FILE}"
+else
+  rm -f "${CERT_FILE}"
+  echo "WARNING: Could not export the certificate from Terraform state."
+fi
 
 echo ""
 

@@ -1,23 +1,23 @@
 # ==============================================================================
-# Instance Template: RStudio VM
+# Instance Template: VS Code VM
 # ------------------------------------------------------------------------------
 # Purpose:
-#   - Define VM template for RStudio instances
+#   - Define VM template for VS Code instances
 #   - Specify machine type, disk, network, and service account
 #   - Used by managed instance group for consistent deployments
 # ==============================================================================
 
-resource "google_compute_instance_template" "rstudio_template" {
-  name         = "rstudio-template" # Template name
-  machine_type = "e2-standard-2"    # 2 vCPU, 8 GB RAM
+resource "google_compute_instance_template" "vscode_template" {
+  name         = "vscode-template" # Template name
+  machine_type = "e2-standard-2"   # 2 vCPU, 8 GB RAM
 
-  tags = ["allow-rstudio"] # Used by firewall rules
+  tags = ["allow-vscode"] # Used by firewall rules
 
   # Disk Configuration
   disk {
     auto_delete  = true # Delete disk with instance
     boot         = true # Mark as boot disk
-    source_image = data.google_compute_image.rstudio_packer_image.self_link
+    source_image = data.google_compute_image.vscode_packer_image.self_link
   }
 
   # Network Configuration
@@ -33,10 +33,10 @@ resource "google_compute_instance_template" "rstudio_template" {
   }
 
   # Startup Script
-  metadata_startup_script = templatefile("./scripts/rstudio_booter.sh", {
+  metadata_startup_script = templatefile("./scripts/vscode_booter.sh", {
     nfs_server_ip = data.google_filestore_instance.nfs_server.networks[0].ip_addresses[0]
     domain_fqdn   = var.dns_zone
-    force_group   = "rstudio-users"
+    force_group   = "vscode-users"
   })
 }
 
@@ -45,23 +45,23 @@ resource "google_compute_instance_template" "rstudio_template" {
 # Regional Managed Instance Group
 # ------------------------------------------------------------------------------
 # Purpose:
-#   - Manage RStudio instances based on template
+#   - Manage VS Code instances based on template
 #   - Provide scaling and auto-healing capabilities
 # ==============================================================================
 
 resource "google_compute_region_instance_group_manager" "instance_group_manager" {
-  name               = "rstudio-instance-group"
-  base_instance_name = "rstudio"
+  name               = "vscode-instance-group"
+  base_instance_name = "vscode"
   target_size        = 2
   region             = "us-central1"
 
   version {
-    instance_template = google_compute_instance_template.rstudio_template.self_link
+    instance_template = google_compute_instance_template.vscode_template.self_link
   }
 
   named_port {
     name = "http"
-    port = 8787
+    port = 8080
   }
 
   auto_healing_policies {
@@ -80,7 +80,7 @@ resource "google_compute_region_instance_group_manager" "instance_group_manager"
 # ==============================================================================
 
 resource "google_compute_region_autoscaler" "autoscaler" {
-  name   = "rstudio-autoscaler"
+  name   = "vscode-autoscaler"
   target = google_compute_region_instance_group_manager.instance_group_manager.self_link
   region = "us-central1"
 
@@ -97,30 +97,41 @@ resource "google_compute_region_autoscaler" "autoscaler" {
 
 
 # ==============================================================================
-# Firewall Rule: Allow RStudio (Web + SSH)
+# Firewall Rule: Allow VS Code (Web + SSH)
 # ------------------------------------------------------------------------------
 # Purpose:
-#   - Allow TCP 8787 (RStudio), 22 (SSH), and 80 (HTTP)
-#   - Apply only to instances tagged allow-rstudio
-#   - 0.0.0.0/0 used for lab only; restrict in production
+#   - Allow TCP 8080 (session broker) and 22 (SSH)
+#   - Apply only to instances tagged allow-vscode
+#
+# 130.211.0.0/22 and 35.191.0.0/16 are Google's load balancer and health
+# check ranges -- without them the backend service marks every node
+# UNHEALTHY and the LB serves 502 with no other symptom. They are not
+# optional and they are not documented on the resource.
+#
+# 0.0.0.0/0 covers SSH for lab convenience; restrict it in production.
 # ==============================================================================
 
-resource "google_compute_firewall" "allow_rstudio" {
-  name    = "allow-rstudio"
+resource "google_compute_firewall" "allow_vscode" {
+  name    = "allow-vscode"
   network = var.vpc_name
 
   allow {
     protocol = "tcp"
-    ports    = ["8787", "22", "80"]
+    ports    = ["8080", "22"]
   }
 
-  target_tags   = ["allow-rstudio"]
-  source_ranges = ["0.0.0.0/0"]
+  target_tags = ["allow-vscode"]
+
+  source_ranges = [
+    "130.211.0.0/22", # Google LB
+    "35.191.0.0/16",  # Google health checks
+    "0.0.0.0/0",      # SSH
+  ]
 }
 
 
 # ==============================================================================
-# Health Check: RStudio Service
+# Health Check: VS Code Service
 # ------------------------------------------------------------------------------
 # Purpose:
 #   - Monitor instance health for managed group
@@ -134,8 +145,10 @@ resource "google_compute_health_check" "http_health_check" {
   healthy_threshold   = 2
   unhealthy_threshold = 2
 
+  # /healthz answers without a session cookie. Probing / would redirect to
+  # the login page, so every healthy node would report a 302.
   http_health_check {
-    request_path = "/auth-sign-in"
-    port         = 8787
+    request_path = "/healthz"
+    port         = 8080
   }
 }

@@ -12,7 +12,7 @@ Install-WindowsFeature -Name GPMC,RSAT-AD-PowerShell,RSAT-AD-AdminCenter,RSAT-AD
 # Join instance to active directory
 # ------------------------------------------------------------
 
-$secretJson = gcloud secrets versions access latest --secret="admin-ad-credentials-rstudio"
+$secretJson = gcloud secrets versions access latest --secret="admin-ad-credentials-vscode"
 $secretObject = $secretJson | ConvertFrom-Json
 $password = $secretObject.password | ConvertTo-SecureString -AsPlainText -Force
 $username = $secretObject.username
@@ -26,7 +26,7 @@ Write-Output "Successfully joined the domain."
 # ------------------------------------------------------------
 
 Write-Output "Add users to the Remote Desktop Users Group"
-$domainGroup = "RSTUDIO\rstudio-users"
+$domainGroup = "VSCODE\vscode-users"
 $maxRetries = 10
 $retryDelay = 30
 

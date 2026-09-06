@@ -15,9 +15,9 @@
 # ==============================================================================
 
 variable "dns_zone" {
-  description = "AD DNS zone / domain (e.g., rstudio.mikecloud.com)"
+  description = "AD DNS zone / domain (e.g., vscode.mikecloud.com)"
   type        = string
-  default     = "rstudio.mikecloud.com"
+  default     = "vscode.mikecloud.com"
 }
 
 
@@ -31,7 +31,7 @@ variable "dns_zone" {
 variable "realm" {
   description = "Kerberos realm (usually DNS zone in UPPERCASE)"
   type        = string
-  default     = "RSTUDIO.MIKECLOUD.COM"
+  default     = "VSCODE.MIKECLOUD.COM"
 }
 
 
@@ -43,9 +43,9 @@ variable "realm" {
 # ==============================================================================
 
 variable "netbios" {
-  description = "NetBIOS short domain name (e.g., RSTUDIO)"
+  description = "NetBIOS short domain name (e.g., VSCODE)"
   type        = string
-  default     = "RSTUDIO"
+  default     = "VSCODE"
 }
 
 
@@ -56,9 +56,9 @@ variable "netbios" {
 # ==============================================================================
 
 variable "user_base_dn" {
-  description = "User base DN (e.g., CN=Users,DC=rstudio,DC=mikecloud,DC=com)"
+  description = "User base DN (e.g., CN=Users,DC=vscode,DC=mikecloud,DC=com)"
   type        = string
-  default     = "CN=Users,DC=rstudio,DC=mikecloud,DC=com"
+  default     = "CN=Users,DC=vscode,DC=mikecloud,DC=com"
 }
 
 
@@ -95,9 +95,9 @@ variable "machine_type" {
 # ==============================================================================
 
 variable "vpc" {
-  description = "Network for mini AD instance (e.g., rstudio-vpc)"
+  description = "Network for mini AD instance (e.g., vscode-vpc)"
   type        = string
-  default     = "rstudio-vpc"
+  default     = "vscode-vpc"
 }
 
 
@@ -108,7 +108,7 @@ variable "vpc" {
 # ==============================================================================
 
 variable "subnet" {
-  description = "Sub-network for mini AD instance (e.g., rstudio-subnet)"
+  description = "Sub-network for mini AD instance (e.g., vscode-subnet)"
   type        = string
-  default     = "rstudio-subnet"
+  default     = "vscode-subnet"
 }

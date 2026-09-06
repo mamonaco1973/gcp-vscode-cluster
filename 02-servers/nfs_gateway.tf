@@ -34,7 +34,7 @@ resource "random_string" "vm_suffix" {
 # ==============================================================================
 
 resource "google_compute_firewall" "allow_ssh" {
-  name    = "rstudio-allow-ssh"
+  name    = "vscode-allow-ssh"
   network = var.vpc
 
   allow {
@@ -42,7 +42,7 @@ resource "google_compute_firewall" "allow_ssh" {
     ports    = ["22"]
   }
 
-  target_tags = ["rstudio-allow-ssh"] # Applies to instances with allow-ssh tag
+  target_tags = ["vscode-allow-ssh"] # Applies to instances with allow-ssh tag
   source_ranges = ["0.0.0.0/0"] # Lab only; restrict for production
 }
 
@@ -55,7 +55,7 @@ resource "google_compute_firewall" "allow_ssh" {
 # ==============================================================================
 
 resource "google_compute_firewall" "allow_smb" {
-  name    = "rstudio-allow-smb"
+  name    = "vscode-allow-smb"
   network = var.vpc
 
   allow {
@@ -63,7 +63,7 @@ resource "google_compute_firewall" "allow_smb" {
     ports    = ["445"]
   }
 
-  target_tags = ["rstudio-allow-smb"] # Applies to instances with allow-smb tag
+  target_tags = ["vscode-allow-smb"] # Applies to instances with allow-smb tag
   source_ranges = ["0.0.0.0/0"] # Lab only; restrict for production
 }
 
@@ -103,11 +103,11 @@ resource "google_compute_instance" "nfs_gateway_instance" {
     enable-oslogin = "TRUE" # Enforce OS Login
 
     startup-script = templatefile("./scripts/nfs_gateway_init.sh", {
-      domain_fqdn   = "rstudio.mikecloud.com"
+      domain_fqdn   = "vscode.mikecloud.com"
       nfs_server_ip = google_filestore_instance.nfs_server.networks[0].ip_addresses[0]
       domain_fqdn   = var.dns_zone
       netbios       = var.netbios
-      force_group   = "rstudio-users"
+      force_group   = "vscode-users"
       realm         = var.realm
     })
   }
@@ -119,7 +119,7 @@ resource "google_compute_instance" "nfs_gateway_instance" {
   }
 
   # Firewall Tags
-  tags = ["rstudio-allow-ssh", "rstudio-allow-nfs", "rstudio-allow-smb"] # SSH + NFS + SMB rules
+  tags = ["vscode-allow-ssh", "vscode-allow-nfs", "vscode-allow-smb"] # SSH + NFS + SMB rules
 }
 
 

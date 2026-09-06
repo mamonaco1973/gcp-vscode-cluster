@@ -1,10 +1,10 @@
 # ==========================================================================================
-# Packer Build: RStudio Custom Image on Ubuntu 24.04 (Noble) for Google Cloud
+# Packer Build: VS Code Custom Image on Ubuntu 24.04 (Noble) for Google Cloud
 # ------------------------------------------------------------------------------------------
 # Purpose:
-#   - Uses Packer to build a custom GCP Compute Engine image containing RStudio
+#   - Uses Packer to build a custom GCP Compute Engine image containing VS Code
 #   - Starts from the official Canonical Ubuntu 24.04 LTS base image family
-#   - Installs prerequisites (base packages, RStudio Server)
+#   - Installs prerequisites (base packages, VS Code Server)
 #   - Produces a tagged, timestamped image for Terraform or Compute Engine use
 # ==========================================================================================
 
@@ -50,6 +50,15 @@ variable "source_image_family" {
   default     = "ubuntu-2404-lts-amd64"
 }
 
+# Optional code-server release pin. Empty resolves to the latest upstream
+# release, which is convenient during development but not reproducible --
+# two builds a week apart can ship different editors.
+variable "code_server_version" {
+  description = "code-server version to install (empty = latest)"
+  type        = string
+  default     = ""
+}
+
 # ------------------------------------------------------------------------------------------
 # Source Block: Google Compute Builder
 # - Launches a temporary VM from the Canonical Ubuntu 24.04 family
@@ -57,7 +66,7 @@ variable "source_image_family" {
 # - Captures a reusable custom image with a timestamp-based name
 # ------------------------------------------------------------------------------------------
 
-source "googlecompute" "rstudio_build_image" {
+source "googlecompute" "vscode_build_image" {
   project_id            = var.project_id             # Target GCP project
   zone                  = var.zone                   # Build zone
   source_image_family   = var.source_image_family    # Base image family
@@ -65,8 +74,8 @@ source "googlecompute" "rstudio_build_image" {
   machine_type          = "e2-standard-2"            # Build VM size
 
   # Output image
-  image_name            = "rstudio-image-${local.timestamp}" # Unique image
-  image_family          = "rstudio-images"                   # Logical family
+  image_name            = "vscode-image-${local.timestamp}" # Unique image
+  image_family          = "vscode-images"                   # Logical family
   disk_size             = 20                                 # Root disk (GB)
 }
 
@@ -76,7 +85,7 @@ source "googlecompute" "rstudio_build_image" {
 # - Each script installs specific components
 # ------------------------------------------------------------------------------------------
 build {
-  sources = ["source.googlecompute.rstudio_build_image"]  
+  sources = ["source.googlecompute.vscode_build_image"]  
 
   # Install base packages and dependencies
   provisioner "shell" {
@@ -84,9 +93,24 @@ build {
     execute_command = "sudo -E bash '{{.Path}}'"
   }
 
-  # Install and configure RStudio Server
+  # Install and configure code-server, plus the PAM stack the broker
+  # authenticates against.
   provisioner "shell" {
-    script          = "./rstudio.sh"
+    script           = "./vscode.sh"
+    execute_command  = "sudo -E bash '{{.Path}}'"
+    environment_vars = ["CODE_SERVER_VERSION=${var.code_server_version}"]
+  }
+
+  # Stage broker sources where broker.sh expects to find them.
+  provisioner "file" {
+    source      = "./broker"
+    destination = "/tmp"
+  }
+
+  # Install the session broker and its systemd unit. The unit is installed
+  # but not enabled -- the booter starts it once SSSD can resolve AD users.
+  provisioner "shell" {
+    script          = "./broker.sh"
     execute_command = "sudo -E bash '{{.Path}}'"
   }
 }

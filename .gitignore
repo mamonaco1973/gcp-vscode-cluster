@@ -5,3 +5,6 @@
 *.terraform.*
 *.pem
 credentials.json
+
+# Exported by validate.sh for client-side trust; regenerate, do not commit.
+vscode-lb.crt

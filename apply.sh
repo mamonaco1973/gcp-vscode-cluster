@@ -1,6 +1,6 @@
 #!/bin/bash
 # ==============================================================================
-# Build Pipeline Script: Mini-AD + RStudio Cluster on GCP
+# Build Pipeline Script: Mini-AD + VS Code Cluster on GCP
 # ------------------------------------------------------------------------------
 # Purpose:
 #   - Orchestrate multi-phase deployment using Terraform and Packer
@@ -61,7 +61,7 @@ cd ..
 
 
 # ==============================================================================
-# Phase 3: RStudio Image Build
+# Phase 3: VS Code Image Build
 # ------------------------------------------------------------------------------
 # Purpose:
 #   - Build custom Compute Engine image using Packer
@@ -77,26 +77,26 @@ cd 03-packer
 
 packer build \
   -var="project_id=$project_id" \
-  rstudio_image.pkr.hcl
+  vscode_image.pkr.hcl
 
 cd ..
 
 
 # ==============================================================================
-# Phase 4: RStudio Cluster Deployment
+# Phase 4: VS Code Cluster Deployment
 # ------------------------------------------------------------------------------
 # Purpose:
-#   - Deploy auto-scaling RStudio cluster using latest image
+#   - Deploy auto-scaling VS Code cluster using latest image
 # ==============================================================================
 
-rstudio_image=$(gcloud compute images list \
-  --filter="name~'^rstudio-image' AND family=rstudio-images" \
+vscode_image=$(gcloud compute images list \
+  --filter="name~'^vscode-image' AND family=vscode-images" \
   --sort-by="~creationTimestamp" \
   --limit=1 \
   --format="value(name)")
 
-if [[ -z "$rstudio_image" ]]; then
-  echo "ERROR: No latest image found in family 'rstudio-images'."
+if [[ -z "$vscode_image" ]]; then
+  echo "ERROR: No latest image found in family 'vscode-images'."
   exit 1
 fi
 
@@ -104,7 +104,7 @@ cd 04-cluster
 
 terraform init
 terraform apply \
-  -var="rstudio_image_name=$rstudio_image" \
+  -var="vscode_image_name=$vscode_image" \
   -auto-approve
 
 cd ..

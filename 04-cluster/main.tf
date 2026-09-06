@@ -54,7 +54,7 @@ data "google_compute_subnetwork" "ad_subnet" {
 # ==============================================================================
 
 data "google_filestore_instance" "nfs_server" {
-  name     = "rstudio-nfs-server"
+  name     = "vscode-nfs-server"
   location = "us-central1-b"
   project  = local.credentials.project_id
 }

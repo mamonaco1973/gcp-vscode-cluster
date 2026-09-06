@@ -16,7 +16,7 @@ resource "google_filestore_instance" "nfs_server" {
   # Filestore Configuration
   # - Tier controls performance and pricing
   # - Location must be zonal (e.g., us-central1-b)
-  name     = "rstudio-nfs-server"
+  name     = "vscode-nfs-server"
   tier     = "BASIC_HDD"     # Basic HDD (NFSv3)
   location = "us-central1-b" # Zonal deployment
   project  = local.credentials.project_id
@@ -51,7 +51,7 @@ resource "google_filestore_instance" "nfs_server" {
 # ==============================================================================
 
 resource "google_compute_firewall" "allow_nfs" {
-  name    = "rstudio-allow-nfs"
+  name    = "vscode-allow-nfs"
   network = data.google_compute_network.ad_vpc.name
 
   allow {

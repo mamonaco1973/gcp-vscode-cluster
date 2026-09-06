@@ -16,7 +16,7 @@
 # ==============================================================================
 # USER: ADMIN
 # ------------------------------------------------------------------------------
-# Generates password and stores RSTUDIO\admin credentials.
+# Generates password and stores VSCODE\admin credentials.
 # ==============================================================================
 
 resource "random_password" "admin_password" {
@@ -26,7 +26,7 @@ resource "random_password" "admin_password" {
 }
 
 resource "google_secret_manager_secret" "admin_secret" {
-  secret_id = "admin-ad-credentials-rstudio"
+  secret_id = "admin-ad-credentials-vscode"
 
   replication {
     auto {}
@@ -36,7 +36,7 @@ resource "google_secret_manager_secret" "admin_secret" {
 resource "google_secret_manager_secret_version" "admin_secret_version" {
   secret = google_secret_manager_secret.admin_secret.id
   secret_data = jsonencode({
-    username = "RSTUDIO\\admin"
+    username = "VSCODE\\admin"
     password = random_password.admin_password.result
   })
 }
@@ -45,7 +45,7 @@ resource "google_secret_manager_secret_version" "admin_secret_version" {
 # ==============================================================================
 # USER: JOHN SMITH
 # ------------------------------------------------------------------------------
-# Generates password and stores RSTUDIO\jsmith credentials.
+# Generates password and stores VSCODE\jsmith credentials.
 # ==============================================================================
 
 resource "random_password" "jsmith_password" {
@@ -55,7 +55,7 @@ resource "random_password" "jsmith_password" {
 }
 
 resource "google_secret_manager_secret" "jsmith_secret" {
-  secret_id = "jsmith-ad-credentials-rstudio"
+  secret_id = "jsmith-ad-credentials-vscode"
 
   replication {
     auto {}
@@ -65,7 +65,7 @@ resource "google_secret_manager_secret" "jsmith_secret" {
 resource "google_secret_manager_secret_version" "jsmith_secret_version" {
   secret = google_secret_manager_secret.jsmith_secret.id
   secret_data = jsonencode({
-    username = "RSTUDIO\\jsmith"
+    username = "VSCODE\\jsmith"
     password = random_password.jsmith_password.result
   })
 }
@@ -74,7 +74,7 @@ resource "google_secret_manager_secret_version" "jsmith_secret_version" {
 # ==============================================================================
 # USER: EMILY DAVIS
 # ------------------------------------------------------------------------------
-# Generates password and stores RSTUDIO\edavis credentials.
+# Generates password and stores VSCODE\edavis credentials.
 # ==============================================================================
 
 resource "random_password" "edavis_password" {
@@ -84,7 +84,7 @@ resource "random_password" "edavis_password" {
 }
 
 resource "google_secret_manager_secret" "edavis_secret" {
-  secret_id = "edavis-ad-credentials-rstudio"
+  secret_id = "edavis-ad-credentials-vscode"
 
   replication {
     auto {}
@@ -94,7 +94,7 @@ resource "google_secret_manager_secret" "edavis_secret" {
 resource "google_secret_manager_secret_version" "edavis_secret_version" {
   secret = google_secret_manager_secret.edavis_secret.id
   secret_data = jsonencode({
-    username = "RSTUDIO\\edavis"
+    username = "VSCODE\\edavis"
     password = random_password.edavis_password.result
   })
 }
@@ -103,7 +103,7 @@ resource "google_secret_manager_secret_version" "edavis_secret_version" {
 # ==============================================================================
 # USER: RAJ PATEL
 # ------------------------------------------------------------------------------
-# Generates password and stores RSTUDIO\rpatel credentials.
+# Generates password and stores VSCODE\rpatel credentials.
 # ==============================================================================
 
 resource "random_password" "rpatel_password" {
@@ -113,7 +113,7 @@ resource "random_password" "rpatel_password" {
 }
 
 resource "google_secret_manager_secret" "rpatel_secret" {
-  secret_id = "rpatel-ad-credentials-rstudio"
+  secret_id = "rpatel-ad-credentials-vscode"
 
   replication {
     auto {}
@@ -123,7 +123,7 @@ resource "google_secret_manager_secret" "rpatel_secret" {
 resource "google_secret_manager_secret_version" "rpatel_secret_version" {
   secret = google_secret_manager_secret.rpatel_secret.id
   secret_data = jsonencode({
-    username = "RSTUDIO\\rpatel"
+    username = "VSCODE\\rpatel"
     password = random_password.rpatel_password.result
   })
 }
@@ -132,7 +132,7 @@ resource "google_secret_manager_secret_version" "rpatel_secret_version" {
 # ==============================================================================
 # USER: AMIT KUMAR
 # ------------------------------------------------------------------------------
-# Generates password and stores RSTUDIO\akumar credentials.
+# Generates password and stores VSCODE\akumar credentials.
 # ==============================================================================
 
 resource "random_password" "akumar_password" {
@@ -142,7 +142,7 @@ resource "random_password" "akumar_password" {
 }
 
 resource "google_secret_manager_secret" "akumar_secret" {
-  secret_id = "akumar-ad-credentials-rstudio"
+  secret_id = "akumar-ad-credentials-vscode"
 
   replication {
     auto {}
@@ -152,7 +152,7 @@ resource "google_secret_manager_secret" "akumar_secret" {
 resource "google_secret_manager_secret_version" "akumar_secret_version" {
   secret = google_secret_manager_secret.akumar_secret.id
   secret_data = jsonencode({
-    username = "RSTUDIO\\akumar"
+    username = "VSCODE\\akumar"
     password = random_password.akumar_password.result
   })
 }
