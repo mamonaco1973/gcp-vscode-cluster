@@ -1,10 +1,12 @@
-# GCP VS Code Cluster with Filestore-Backed Home Directories
+# Multi-User VS Code Cluster on Google Cloud
 
 This project extends the **GCP Mini Active Directory** lab into a multi-user,
 domain-joined **VS Code Server cluster** on Google Cloud. Users sign in with
 their Active Directory credentials from a browser and get a private editor
 running as their own POSIX identity, with a home directory shared across every
 node in the cluster.
+
+![VS Code](vscode.png)
 
 Each user gets their own `code-server` process rather than a shared one. A
 session broker in front of the cluster authenticates against AD through PAM,
@@ -36,10 +38,6 @@ same files no matter which node the load balancer sends them to.
 * [Install Latest Packer](https://developer.hashicorp.com/packer/install)
 
 If this is your first time watching our content, we recommend starting with this video: [GCP + Terraform: Easy Setup](https://youtu.be/3spJpYX4f7I). It provides a step-by-step guide to properly configure Terraform, Packer, and the gcloud CLI.
-
-## Build WorkFlow
-
-![Build WorkFlow](build-workflow.png)
 
 ## Download this Repository  
 
