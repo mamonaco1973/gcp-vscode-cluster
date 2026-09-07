@@ -53,6 +53,8 @@ echo "NOTE: Enabling APIs needed for build."
 gcloud config set project "$project_id"
 
 gcloud services enable compute.googleapis.com
+gcloud services enable file.googleapis.com          # Filestore (NFS)
+gcloud services enable secretmanager.googleapis.com # AD credentials
 gcloud services enable firestore.googleapis.com
 gcloud services enable cloudresourcemanager.googleapis.com
 gcloud services enable storage.googleapis.com
