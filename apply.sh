@@ -58,7 +58,6 @@ terraform init                # Initialize Terraform
 terraform apply -auto-approve # Deploy server resources
 
 cd ..
-exit 0
 
 # ==============================================================================
 # Phase 3: VS Code Image Build

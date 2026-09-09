@@ -211,8 +211,11 @@ sudo sed -i '/^passwd:/ s/$/ sss winbind/' /etc/nsswitch.conf
 # Add 'sss' and 'winbind' to the `group` line
 sudo sed -i '/^group:/ s/$/ sss winbind/' /etc/nsswitch.conf
 
-sudo cp /tmp/nsswitch.conf /etc/nsswitch.conf
-sudo rm /tmp/nsswitch.conf
+# NOTE: both edits above are in place. An older version built the file in
+# /tmp and copied it back, the way smb.conf still does; that copy-back was
+# left behind after the switch to sed and only ever printed "cannot stat".
+# Removed deliberately -- a stale /tmp/nsswitch.conf would have clobbered
+# the two lines above.
 
 # Restart Samba/Winbind/SSSD services to activate configuration
 sudo systemctl restart winbind smb nmb sssd
