@@ -52,7 +52,7 @@ resource "google_compute_instance_template" "vscode_template" {
 resource "google_compute_region_instance_group_manager" "instance_group_manager" {
   name               = "vscode-instance-group"
   base_instance_name = "vscode"
-  target_size        = 2
+  target_size        = 1
   region             = "us-central1"
 
   version {
@@ -86,7 +86,7 @@ resource "google_compute_region_autoscaler" "autoscaler" {
 
   autoscaling_policy {
     max_replicas    = 4   # Upper bound
-    min_replicas    = 2   # Lower bound
+    min_replicas    = 1   # Lower bound
     cooldown_period = 300 # Delay between scale actions
 
     cpu_utilization {

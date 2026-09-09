@@ -6,6 +6,22 @@
 # Designed for cloud-based Linux environments joining a Samba AD domain.
 # ================================================================================================
 
+# ---------------------------------------------------------------------------------
+# Logging
+# ---------------------------------------------------------------------------------
+# Capture EVERYTHING from here down -- stdout and stderr, every command.
+# Previously only apt and uptime redirected into this file, so the domain join,
+# the mounts and the chgrp/chmod block wrote nowhere it could be read: a failed
+# "chgrp vscode-users /nfs" left /nfs as root:root and said so only on the
+# serial console. tee keeps the file; logger also puts it in the journal, so
+# "journalctl -t startup-script" works even if the disk copy is lost.
+LOG=/root/userdata.log
+touch "$LOG"
+chmod 600 "$LOG"
+exec > >(tee -a "$LOG" | logger -t startup-script -s 2>/dev/console) 2>&1
+
+echo "gateway provisioning start: $(date -Is)"
+
 FLAG_FILE="/root/.nfs_provisioned"
 
 #--------------------------------------------------------------------
@@ -13,7 +29,7 @@ FLAG_FILE="/root/.nfs_provisioned"
 #--------------------------------------------------------------------
 
 if [ -f "$FLAG_FILE" ]; then
-  echo "Provisioning already completed — skipping." >> /root/userdata.log 2>&1
+  echo "Provisioning already completed - skipping."
   exit 0
 fi
 
@@ -21,7 +37,7 @@ fi
 # Section 1: Update the OS and Install Required Packages
 # ---------------------------------------------------------------------------------
 
-apt-get update -y >> /root/userdata.log 2>&1   # Refresh package lists for latest versions
+apt-get update -y                              # Refresh package lists for latest versions
 export DEBIAN_FRONTEND=noninteractive          # Prevent interactive prompts during installs
 
 # Install packages for AD integration, NFS, and Samba:
@@ -36,7 +52,7 @@ export DEBIAN_FRONTEND=noninteractive          # Prevent interactive prompts dur
 apt-get install -y less unzip realmd sssd-ad sssd-tools libnss-sss \
     libpam-sss adcli samba samba-common-bin samba-libs oddjob \
     oddjob-mkhomedir packagekit krb5-user nano vim nfs-common \
-    winbind libpam-winbind libnss-winbind stunnel4 >> /root/userdata.log 2>&1
+    winbind libpam-winbind libnss-winbind stunnel4
 
 # ---------------------------------------------------------------------------------
 # Section 2: Mount NFS file system
@@ -51,7 +67,7 @@ echo "${nfs_server_ip}:/filestore /nfs nfs vers=3,rw,hard,noatime,rsize=65536,ws
 systemctl daemon-reload                              # Reload mount units
 mount /nfs                                           # Mount root NFS
 
-mkdir -p /nfs/home /nfs/data /nfs/rlibs              # Create standard subdirectories
+mkdir -p /nfs/home /nfs/data /nfs/extensions         # Create standard subdirectories
 
 # Add /home mapping to NFS (user homes on NFS share)
 echo "${nfs_server_ip}:/filestore/home /home nfs vers=3,rw,hard,noatime,rsize=65536,wsize=65536,timeo=600,_netdev 0 0" \
@@ -70,9 +86,11 @@ admin_password=$(echo $secretValue | jq -r '.password')      # Extract password
 admin_username=$(echo $secretValue | jq -r '.username' | sed 's/.*\\//') # Extract username w/o domain
 
 # Use `realm` to join the AD domain (via Samba membership software)
-# Credentials piped in securely, logs captured for troubleshooting
+# Credentials piped in securely. Output goes to the unified log above --
+# it used to land in /root/join.log, which meant a failed join was invisible
+# to anyone reading userdata.log.
 echo -e "$admin_password" | sudo /usr/sbin/realm join --membership-software=samba \
-    -U "$admin_username" ${domain_fqdn} --verbose >> /root/join.log 2>&1
+    -U "$admin_username" ${domain_fqdn} --verbose
     
 # ---------------------------------------------------------------------------------
 # Section 4: Allow Password Authentication for AD Users
@@ -222,13 +240,39 @@ su -c "exit" jsmith
 su -c "exit" akumar
 su -c "exit" edavis
 
-# Set NFS directory ownership and permissions
+# ---------------------------------------------------------------------------------
+# Verify the AD group resolves BEFORE using it
+# ---------------------------------------------------------------------------------
+# chgrp needs NSS to turn the group NAME into a GID; chmod does not. So if the
+# group is unresolvable here, chgrp fails and chmod still succeeds, leaving
+# /nfs as root:root mode 2770 -- which locks every AD user out of the share
+# while looking like the permissions were applied. Print what NSS actually
+# returns so the log says which of the two happened.
+echo "--- resolving ${force_group} before applying ownership ---"
+if getent group ${force_group}; then
+  echo "OK: ${force_group} resolved"
+else
+  echo "ERROR: ${force_group} did NOT resolve -- chgrp below will fail and"
+  echo "ERROR: /nfs will stay root:root. Check that the AD group carries a"
+  echo "ERROR: gidNumber, and that ldap_id_mapping is False in sssd.conf."
+  echo "--- sssd status ---"
+  systemctl is-active sssd
+fi
+
+# Set NFS directory ownership and permissions.
+#
+# setgid (the leading 2) makes everything created below these directories
+# inherit the group, so one user can read what another staged.
+#
+# /nfs/extensions holds VSIX files for extensions that are not on Open VSX.
+# It replaces the RStudio build's /nfs/rlibs, which shared R packages -- this
+# build has no shared library path and nothing referenced rlibs.
 chgrp ${force_group} /nfs
 chgrp ${force_group} /nfs/data
-chgrp ${force_group} /nfs/rlibs
+chgrp ${force_group} /nfs/extensions
 
 chmod 2770 /nfs
-chmod 2775 /nfs/rlibs
+chmod 2775 /nfs/extensions
 chmod 2770 /nfs/data
 chmod 700 /home/*
 
@@ -238,5 +282,6 @@ git clone https://github.com/mamonaco1973/gcp-vscode-cluster.git
 chmod -R 775 gcp-vscode-cluster
 chgrp -R vscode-users gcp-vscode-cluster
 
-uptime >> /root/userdata.log 2>&1
+uptime
+echo "gateway provisioning complete: $(date -Is)"
 touch "$FLAG_FILE"
