@@ -24,19 +24,21 @@ vscode_image=$(gcloud compute images list \
   --limit=1 \
   --format="value(name)")
 
+# The cluster is built from this image and looks it up by name, so without it
+# there is no cluster to destroy -- skip this phase rather than stopping the
+# teardown of the servers and directory below (e.g. after a failed Packer run).
 if [[ -z "$vscode_image" ]]; then
-  echo "ERROR: No latest image found for 'vscode-image' in family 'vscode-images'."
-  exit 1
+  echo "NOTE: No image found for 'vscode-image' in family 'vscode-images'; skipping cluster teardown."
+else
+  cd 04-cluster
+
+  terraform init
+  terraform destroy \
+    -var="vscode_image_name=$vscode_image" \
+    -auto-approve
+
+  cd ..
 fi
-
-cd 04-cluster
-
-terraform init
-terraform destroy \
-  -var="vscode_image_name=$vscode_image" \
-  -auto-approve
-
-cd ..
 
 # ==============================================================================
 # Phase 2: Custom Image Cleanup

@@ -33,18 +33,21 @@ get_instance_nat_ip_by_prefix_and_vpc() {
   local prefix="$1"
   local vpc="$2"
 
-  gcloud compute instances list \
-    --filter="name~'^${prefix}.*' AND networkInterfaces.network:${vpc}" \
-    --format="value(networkInterfaces[0].accessConfigs[0].natIP)" \
-    --limit=1 2>/dev/null | gcloud_trim
+  # "|| true": with set -euo pipefail, a failed gcloud call would otherwise
+  # end the whole script silently (its error is hidden by 2>/dev/null). An
+  # empty result is reported below instead.
+  { gcloud compute instances list \
+      --filter="name~'^${prefix}.*' AND networkInterfaces.network:${vpc}" \
+      --format="value(networkInterfaces[0].accessConfigs[0].natIP)" \
+      --limit=1 2>/dev/null || true; } | gcloud_trim
 }
 
 get_global_address_ip() {
   local name="$1"
 
-  gcloud compute addresses describe "${name}" \
-    --global \
-    --format="value(address)" 2>/dev/null | gcloud_trim
+  { gcloud compute addresses describe "${name}" \
+      --global \
+      --format="value(address)" 2>/dev/null || true; } | gcloud_trim
 }
 
 # -k is required, not sloppy: the LB presents a self-signed certificate by
@@ -104,6 +107,14 @@ printf "%-28s %s\n" "NOTE: Windows RDP Host:" "${WIN_IP:-<not found>}"
 echo ""
 
 printf "%-28s %s\n" "NOTE: VS Code URL:"      "https://${VSCODE_LB_IP}"
+
+# A demo login, read back from Secret Manager (the source of truth).
+RPATEL_PASSWORD="$( { gcloud secrets versions access latest \
+    --secret=rpatel-ad-credentials-vscode 2>/dev/null || true; } \
+  | jq -r '.password // empty' 2>/dev/null || true)"
+printf "%-28s %s\n" "NOTE: Sign in as:" "rpatel"
+printf "%-28s %s\n" "NOTE: Password:" \
+  "${RPATEL_PASSWORD:-<unavailable> - gcloud secrets versions access latest --secret=rpatel-ad-credentials-vscode}"
 
 echo ""
 

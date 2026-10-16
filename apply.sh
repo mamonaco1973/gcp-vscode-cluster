@@ -74,6 +74,9 @@ export GOOGLE_APPLICATION_CREDENTIALS="$(pwd)/credentials.json"
 
 cd 03-packer
 
+# Installs the googlecompute plugin the template requires; a no-op once it
+# is installed on this machine.
+packer init vscode_image.pkr.hcl
 packer build \
   -var="project_id=$project_id" \
   vscode_image.pkr.hcl

@@ -8,7 +8,11 @@
 #
 # Notes:
 #   - Users: admin, jsmith, edavis, rpatel, akumar
-#   - Password length: 24 characters
+#   - admin: a strong 24-character random password (used by automation for
+#     the domain join; never typed).
+#   - Users: friendly "<word>-<number>" passwords (e.g. orange-481920) so they
+#     are easy to type at the VS Code / desktop login during a demo.
+#     lower + digit + "-" satisfies AD's 3-of-4 complexity rule.
 #   - Secrets contain JSON: username, password
 # ==============================================================================
 
@@ -43,16 +47,45 @@ resource "google_secret_manager_secret_version" "admin_secret_version" {
 
 
 # ==============================================================================
-# USER: JOHN SMITH
-# ------------------------------------------------------------------------------
-# Generates password and stores VSCODE\jsmith credentials.
+# FRIENDLY USER PASSWORDS: "<word>-<number>"
 # ==============================================================================
 
-resource "random_password" "jsmith_password" {
-  length           = 24
-  special          = true
-  override_special = "!@#$%"
+locals {
+  word_users = toset(["jsmith", "edavis", "rpatel", "akumar"])
+
+  memorable_words = [
+    "bright", "simple", "orange", "window", "little", "people", "friend",
+    "yellow", "animal", "family", "circle", "moment", "summer", "button",
+    "planet", "rocket", "silver", "forest", "stream", "butter", "castle",
+    "wonder", "gentle", "driver", "coffee"
+  ]
 }
+
+resource "random_shuffle" "word" {
+  for_each     = local.word_users
+  input        = local.memorable_words
+  result_count = 1
+}
+
+resource "random_integer" "num" {
+  for_each = local.word_users
+  min      = 100000
+  max      = 999999
+}
+
+locals {
+  passwords = {
+    for user in local.word_users :
+    user => format("%s-%d", random_shuffle.word[user].result[0], random_integer.num[user].result)
+  }
+}
+
+
+# ==============================================================================
+# USER: JOHN SMITH
+# ------------------------------------------------------------------------------
+# Stores VSCODE\jsmith credentials (friendly password above).
+# ==============================================================================
 
 resource "google_secret_manager_secret" "jsmith_secret" {
   secret_id = "jsmith-ad-credentials-vscode"
@@ -66,7 +99,7 @@ resource "google_secret_manager_secret_version" "jsmith_secret_version" {
   secret = google_secret_manager_secret.jsmith_secret.id
   secret_data = jsonencode({
     username = "VSCODE\\jsmith"
-    password = random_password.jsmith_password.result
+    password = local.passwords["jsmith"]
   })
 }
 
@@ -74,14 +107,8 @@ resource "google_secret_manager_secret_version" "jsmith_secret_version" {
 # ==============================================================================
 # USER: EMILY DAVIS
 # ------------------------------------------------------------------------------
-# Generates password and stores VSCODE\edavis credentials.
+# Stores VSCODE\edavis credentials (friendly password above).
 # ==============================================================================
-
-resource "random_password" "edavis_password" {
-  length           = 24
-  special          = true
-  override_special = "!@#$%"
-}
 
 resource "google_secret_manager_secret" "edavis_secret" {
   secret_id = "edavis-ad-credentials-vscode"
@@ -95,7 +122,7 @@ resource "google_secret_manager_secret_version" "edavis_secret_version" {
   secret = google_secret_manager_secret.edavis_secret.id
   secret_data = jsonencode({
     username = "VSCODE\\edavis"
-    password = random_password.edavis_password.result
+    password = local.passwords["edavis"]
   })
 }
 
@@ -103,14 +130,8 @@ resource "google_secret_manager_secret_version" "edavis_secret_version" {
 # ==============================================================================
 # USER: RAJ PATEL
 # ------------------------------------------------------------------------------
-# Generates password and stores VSCODE\rpatel credentials.
+# Stores VSCODE\rpatel credentials (friendly password above).
 # ==============================================================================
-
-resource "random_password" "rpatel_password" {
-  length           = 24
-  special          = true
-  override_special = "!@#$%"
-}
 
 resource "google_secret_manager_secret" "rpatel_secret" {
   secret_id = "rpatel-ad-credentials-vscode"
@@ -124,7 +145,7 @@ resource "google_secret_manager_secret_version" "rpatel_secret_version" {
   secret = google_secret_manager_secret.rpatel_secret.id
   secret_data = jsonencode({
     username = "VSCODE\\rpatel"
-    password = random_password.rpatel_password.result
+    password = local.passwords["rpatel"]
   })
 }
 
@@ -132,14 +153,8 @@ resource "google_secret_manager_secret_version" "rpatel_secret_version" {
 # ==============================================================================
 # USER: AMIT KUMAR
 # ------------------------------------------------------------------------------
-# Generates password and stores VSCODE\akumar credentials.
+# Stores VSCODE\akumar credentials (friendly password above).
 # ==============================================================================
-
-resource "random_password" "akumar_password" {
-  length           = 24
-  special          = true
-  override_special = "!@#$%"
-}
 
 resource "google_secret_manager_secret" "akumar_secret" {
   secret_id = "akumar-ad-credentials-vscode"
@@ -153,7 +168,7 @@ resource "google_secret_manager_secret_version" "akumar_secret_version" {
   secret = google_secret_manager_secret.akumar_secret.id
   secret_data = jsonencode({
     username = "VSCODE\\akumar"
-    password = random_password.akumar_password.result
+    password = local.passwords["akumar"]
   })
 }
 

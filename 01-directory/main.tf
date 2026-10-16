@@ -7,8 +7,8 @@
 # ==============================================================================
 
 provider "google" {
-  project     = local.credentials.project_id      # Project ID from credentials JSON
-  credentials = file("../credentials.json")       # Path to service account JSON file
+  project     = local.credentials.project_id # Project ID from credentials JSON
+  credentials = file("../credentials.json")  # Path to service account JSON file
 }
 
 
