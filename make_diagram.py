@@ -1,267 +1,249 @@
-"""Generate gcp-vscode-cluster.drawio in the project's Lucid-style diagram look.
+#!/usr/bin/env python3
+"""Generate the README architecture diagram, one SVG per colour scheme.
 
-Ports the AWS counterpart's visual language -- dashed cloud boundary, rounded
-white cards with a Lucide glyph and two detail lines, coloured edges carrying
-the protocol -- onto this build's topology.
+Two files rather than one self-switching file: GitHub strips <style> blocks
+from inline SVG, so a `prefers-color-scheme` media query inside the document is
+silently dropped. The README pairs them with <picture>, which GitHub honours.
 
-Deliberately narrower than the repo. The Windows admin host and the Samba
-gateway are real but they are not on the path a user takes to an editor, so
-they appear once as a muted footnote instead of as cards competing with the
-managed instance group.
-
-Icons are harvested from the AWS diagram rather than re-encoded here: they are
-Lucide SVGs embedded as data URIs, and the stroke colour is baked into the URI,
-so recolouring means rewriting the %23rrggbb escape.
-
-Run:  python make_diagram.py  &&  drawio -x -f png -o gcp-vscode-cluster.png ...
+A README diagram is studied, not narrated, so it is COMPLETE rather than
+minimal: both ways in, the HTTPS load balancer, the code-server nodes and
+their session broker, the Windows admin host and NFS gateway, the mini-AD DC,
+Filestore, Secret Manager and the Packer image are all on it.
+Run:  python3 make_diagram.py
 """
-import io
+
 import os
-import re
 
-AWS_DRAWIO = r"C:\cloudenv\aws-vscode-cluster\aws-vscode-cluster.drawio"
-OUT = "gcp-vscode-cluster.drawio"
+HERE = os.path.dirname(os.path.abspath(__file__))
 
-# ==============================================================================
-# Palette -- shared with the AWS diagram so the two read as a series
-# ==============================================================================
+# ------------------------------------------------------------------------------
+# Geometry and style (shared with the other projects' diagrams)
+# ------------------------------------------------------------------------------
+NW, NH = 420, 110                          # node width, height
+GUTTER = 140                               # between columns: room for a label
+MARGIN = 40
+COL = [MARGIN + i * (NW + GUTTER) for i in range(3)]
+ROW = [40 + i * 200 for i in range(4)]
+W = MARGIN * 2 + NW * 3 + GUTTER * 2
+H = ROW[-1] + NH + 40 + 0
+TITLE_PX, SUB_PX, EDGE_PX = 26, 17, 16
 
-NAVY = "#1A2B4A"  # structure: boundaries, primary text
-BLUE = "#336791"  # front door: load balancer
-RED = "#C0392B"   # subnet boundary
-GREEN = "#2E7D4F" # identity: domain controller
-TEAL = "#1F8A70"  # storage: Filestore
-AMBER = "#B9770E" # build artefact: the Packer image
-PURPLE = "#7A5CA6" # the per-node detail inset
-MUTED = "#5B6B82"  # secondary text
+THEMES = {
+    "dark": {
+        "bg": "#0d1117", "panel": "#161b22", "text": "#e6edf3",
+        "muted": "#8b949e", "line": "#58a6ff", "local": "#39c5bb",
+        "purple": "#c39be8", "navy": "#c8d6e8", "blue": "#58a6ff",
+        "amber": "#f2c163", "store": "#7ee787",
+    },
+    "light": {
+        "bg": "#ffffff", "panel": "#f6f8fa", "text": "#1f2328",
+        "muted": "#59636e", "line": "#0969da", "local": "#137e77",
+        "purple": "#8250df", "navy": "#475467", "blue": "#0969da",
+        "amber": "#9a6700", "store": "#1a7f37",
+    },
+}
+
+# Lucide icon paths, on a 24-unit grid.
+ICONS = {
+    "globe": ['<circle cx="12" cy="12" r="10"/>',
+              '<path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/>',
+              '<path d="M2 12h20"/>'],
+    "route": ['<circle cx="6" cy="19" r="3"/>', '<circle cx="18" cy="5" r="3"/>',
+              '<path d="M12 19h4.5a3.5 3.5 0 0 0 0-7h-8a3.5 3.5 0 0 1 0-7H12"/>'],
+    "network": ['<rect x="16" y="16" width="6" height="6" rx="1"/>',
+                '<rect x="2" y="16" width="6" height="6" rx="1"/>',
+                '<rect x="9" y="2" width="6" height="6" rx="1"/>',
+                '<path d="M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3"/>',
+                '<path d="M12 12V8"/>'],
+    "layers": ['<path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83'
+               'l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/>',
+               '<path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/>',
+               '<path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/>'],
+    "database": ['<ellipse cx="12" cy="5" rx="9" ry="3"/>',
+                 '<path d="M3 5V19A9 3 0 0 0 21 19V5"/>',
+                 '<path d="M3 12A9 3 0 0 0 21 12"/>'],
+    "key": ['<path d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 '
+            '1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 '
+            '1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z"/>',
+            '<circle cx="16.5" cy="7.5" r=".5"/>'],
+    "monitor": ['<rect width="20" height="14" x="2" y="3" rx="2"/>',
+                '<line x1="8" x2="16" y1="21" y2="21"/>',
+                '<line x1="12" x2="12" y1="17" y2="21"/>'],
+    "terminal": ['<polyline points="4 17 10 11 4 5"/>',
+                 '<line x1="12" x2="20" y1="19" y2="19"/>'],
+    "users": ['<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>',
+              '<circle cx="9" cy="7" r="4"/>',
+              '<path d="M22 21v-2a4 4 0 0 0-3-3.87"/>',
+              '<path d="M16 3.13a4 4 0 0 1 0 7.75"/>'],
+    "file": ['<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/>',
+             '<path d="M14 2v4a2 2 0 0 0 2 2h4"/>', '<path d="M10 9H8"/>',
+             '<path d="M16 13H8"/>', '<path d="M16 17H8"/>'],
+}
+
+NODES = {}
 
 
-# ==============================================================================
-# Icon harvesting
-# ==============================================================================
+def _r(nid):
+    """Return (left, top, right, bottom, centre-x, centre-y) for a node."""
+    x, y = NODES[nid][0], NODES[nid][1]
+    return x, y, x + NW, y + NH, x + NW / 2, y + NH / 2
 
-def load_icons():
-    """Pull the Lucide data-URI image styles out of the AWS diagram.
 
-    Returns:
-        Mapping of AWS cell id (e.g. "c_alb_i") to its full mxCell style string.
-    """
-    src = io.open(AWS_DRAWIO, encoding="utf-8").read()
-    out = {}
-    for m in re.finditer(r'<mxCell id="([^"]+_i)" value="" style="(shape=image[^"]*)"', src):
-        out[m.group(1)] = m.group(2)
+def gutter_x(c):
+    """Centre of the gutter to the right of column c."""
+    return COL[c] + NW + GUTTER / 2
+
+
+def gutter_y(r):
+    """Centre of the gap below row r."""
+    return ROW[r] + NH + (ROW[1] - ROW[0] - NH) / 2
+
+
+# ------------------------------------------------------------------------------
+# Layout
+# ------------------------------------------------------------------------------
+# The load balancer is the subject (amber) and sits over the code-server MIG
+# in the middle column, with the mini-AD DC below. The admin path (Windows host,
+# then the NFS gateway, then Filestore) runs down the left; secrets and the
+# image are on the right.
+#
+# id: (x, y, colour key, icon, title, subtitle[, "dashed"])
+NODES.update({
+    "admin":    (COL[0], ROW[0], "navy", "monitor", "Admin clients",
+                 "RDP 3389, SSH 22"),
+    "browser":  (COL[1], ROW[0], "navy", "globe", "VS Code users",
+                 "browser, AD credentials"),
+    "win":      (COL[0], ROW[1], "blue", "monitor", "win-ad-<suffix>",
+                 "Windows Server, RSAT, Z: = /nfs"),
+    "alb":      (COL[1], ROW[1], "amber", "route", "vscode-alb",
+                 "global HTTPS LB, self-signed, cookie"),
+    "gw":       (COL[0], ROW[2], "blue", "terminal", "nfs-gateway-<suffix>",
+                 "Ubuntu 24.04, NFS mount, Samba"),
+    "asg":      (COL[1], ROW[2], "blue", "terminal", "vscode-instance-group",
+                 "e2-standard-2, 1-4 VMs, broker :8080"),
+    "secrets":  (COL[2], ROW[2], "purple", "key", "Secret Manager",
+                 "*-ad-credentials-vscode"),
+    "ad":       (COL[1], ROW[3], "navy", "users", "mini-AD",
+                 "Samba DC, vscode.mikecloud.com"),
+    "efs":      (COL[0], ROW[3], "store", "layers", "vscode-nfs-server",
+                 "Filestore BASIC_HDD 1 TB: /filestore"),
+    "ami":      (COL[2], ROW[3], "navy", "file", "VS Code image",
+                 "Packer: code-server + broker"),
+})
+
+ad_, br, wn, alb = _r("admin"), _r("browser"), _r("win"), _r("alb")
+gw, asg, sec, ad = _r("gw"), _r("asg"), _r("secrets"), _r("ad")
+efs, ami = _r("efs"), _r("ami")
+
+# id: (path, colour key, label, label_x, label_y, anchor[, "dashed"])
+EDGES = {
+    "e_rdp":    (f"M{ad_[4]},{ad_[3]} V{wn[1] - 5}", "line",
+                 "RDP", ad_[4] + 14, gutter_y(0) + 6, "start"),
+    "e_http":   (f"M{br[4]},{br[3]} V{alb[1] - 5}", "line",
+                 "HTTPS :443", br[4] + 14, gutter_y(0) + 6, "start"),
+    "e_smb":    (f"M{wn[4]},{wn[3]} V{gw[1] - 5}", "store",
+                 "SMB (Z:)", wn[4] + 14, gutter_y(1) + 6, "start"),
+    "e_8787":   (f"M{alb[4]},{alb[3]} V{asg[1] - 5}", "line",
+                 "8080", alb[4] + 14, gutter_y(1) + 6, "start"),
+    "e_sec":    (f"M{asg[2]},{asg[5]} H{sec[0] - 5}", "purple",
+                 "join password", gutter_x(1), asg[5] - 12, "middle"),
+    "e_gnfs":   (f"M{gw[4]},{gw[3]} V{efs[1] - 5}", "store",
+                 "NFS", gw[4] + 14, gutter_y(2) + 35, "start"),
+    "e_sssd":   (f"M{asg[4]},{asg[3]} V{ad[1] - 5}", "line",
+                 "SSSD", asg[4] + 14, gutter_y(2) + 35, "start"),
+    "e_nfs":    (f"M{asg[4] - 120},{asg[3]} V{gutter_y(2)} H{efs[4] + 120} V{efs[1] - 5}",
+                 "store", "", 0, 0, "start"),
+    "e_ami":    (f"M{ami[4]},{ami[1]} V{gutter_y(2) + 20} H{asg[4] + 120} V{asg[3] + 5}",
+                 "navy", "image", ami[4] + 14, gutter_y(2) + 35,
+                 "start"),
+}
+
+ALT = ("VS Code users sign in from a browser to vscode-alb, a global external HTTPS "
+       "load balancer with a self-signed certificate for its IP and cookie session "
+       "affinity; port 80 redirects to 443. It forwards to port 8080 on the session "
+       "broker on each node of vscode-instance-group, a managed instance group of one to "
+       "four e2-standard-2 VMs built from a Packer image. The broker authenticates the "
+       "user against the mini-AD Samba domain controller through PAM and SSSD, starts a "
+       "code-server process under the user's own UID and proxies to it. Home directories "
+       "and /nfs come from the vscode-nfs-server Filestore share. Nodes read the domain "
+       "join password from Secret Manager. Administrators RDP to a Windows host, which "
+       "maps the NFS gateway's Samba share of the same Filestore as drive Z:.")
+
+# ------------------------------------------------------------------------------
+# Rendering
+# ------------------------------------------------------------------------------
+from html import escape
+
+FONT = "-apple-system, BlinkMacSystemFont, Segoe UI, Helvetica, Arial, sans-serif"
+
+
+def node_svg(nid, t):
+    """Render one service box: rounded panel, icon, title, subtitle."""
+    x, y, key, icon, title, sub, *opt = NODES[nid]
+    title, sub = escape(title), escape(sub)
+    colour = t[key]
+    dash = ' stroke-dasharray="10 7"' if opt and opt[0] == "dashed" else ""
+    scale = 1.25
+    isz = 24 * scale
+    ix, iy = x + 20, y + (NH - isz) / 2
+    tx = x + 20 + isz + 14
+    return "".join([
+        f'<rect x="{x}" y="{y}" width="{NW}" height="{NH}" rx="10" ry="10" '
+        f'fill="{t["panel"]}" stroke="{colour}" stroke-width="2"{dash}/>',
+        f'<g transform="translate({ix},{iy}) scale({scale})" fill="none" '
+        f'stroke="{colour}" stroke-width="2" stroke-linecap="round" '
+        f'stroke-linejoin="round">' + "".join(ICONS[icon]) + "</g>",
+        f'<text x="{tx}" y="{y + NH/2 - 4}" font-family="{FONT}" '
+        f'font-size="{TITLE_PX}" font-weight="600" fill="{t["text"]}">{title}</text>',
+        f'<text x="{tx}" y="{y + NH/2 + 22}" font-family="{FONT}" '
+        f'font-size="{SUB_PX}" fill="{t["muted"]}">{sub}</text>',
+    ])
+
+
+def edge_svg(eid, t):
+    """Render one arrow plus its label (on a background chip, so lines that
+    pass behind a label never cut through its text)."""
+    d, key, label, lx, ly, anchor, *opt = EDGES[eid]
+    label = escape(label)
+    colour = t[key]
+    dash = ' stroke-dasharray="8 6"' if opt and opt[0] == "dashed" else ""
+    out = (f'<path d="{d}" fill="none" stroke="{colour}" stroke-width="2"{dash} '
+           f'marker-end="url(#a_{eid})"/>')
+    if label:
+        out += (f'<text x="{lx}" y="{ly}" text-anchor="{anchor}" '
+                f'font-family="{FONT}" font-size="{EDGE_PX}" font-weight="600" '
+                f'fill="{colour}" stroke="{t["bg"]}" stroke-width="6" '
+                f'paint-order="stroke">{label}</text>')
     return out
 
 
-def recolour(style, colour):
-    """Swap the stroke colour baked into a Lucide data URI.
-
-    Args:
-        style: An mxCell image style harvested by load_icons().
-        colour: Target colour as "#rrggbb".
-
-    Returns:
-        The style with its single %23rrggbb escape replaced.
-    """
-    return re.sub(r"%23[0-9A-Fa-f]{6}", "%23" + colour.lstrip("#"), style)
-
-
-ICONS = load_icons()
-
-# AWS cell id -> what it depicts here. The mapping is 1:1 because the two
-# builds are the same architecture on different clouds.
-GLYPH = {
-    "browser": "c_br_i",
-    "lb":      "c_alb_i",
-    "mig":     "c_asg_i",
-    "ad":      "c_ad_i",
-    "store":   "c_efs_i",
-    "image":   "c_ami_i",
-    "broker":  "c_brk_i",
-    "code":    "c_cs_i",
-    "cloud":   "region_i",
-    "vpc":     "vpc_i",
-}
+def build(t):
+    """Assemble the diagram for one theme."""
+    out = [f'<svg xmlns="http://www.w3.org/2000/svg" width="{W}" height="{H}" '
+           f'viewBox="0 0 {W} {H}" role="img" aria-label="{ALT}">', "<defs>"]
+    # One marker per edge: a shared marker cannot carry per-edge colour.
+    for eid, spec in EDGES.items():
+        out.append(
+            f'<marker id="a_{eid}" viewBox="0 0 10 10" refX="9" refY="5" '
+            f'markerWidth="5" markerHeight="5" orient="auto-start-reverse">'
+            f'<path d="M0,0 L10,5 L0,10 z" fill="{t[spec[1]]}"/></marker>')
+    out.append("</defs>")
+    out.append(f'<rect width="{W}" height="{H}" fill="{t["bg"]}"/>')
+    for eid in EDGES:
+        out.append(edge_svg(eid, t))
+    for nid in NODES:
+        out.append(node_svg(nid, t))
+    out.append("</svg>")
+    return "".join(out)
 
 
-# ==============================================================================
-# XML emitters
-# ==============================================================================
-
-cells = []
-
-
-def esc(t):
-    return (t.replace("&", "&amp;").replace("<", "&lt;")
-             .replace(">", "&gt;").replace('"', "&quot;"))
+def main():
+    for name, theme in THEMES.items():
+        path = os.path.join(HERE, f"architecture-{name}.svg")
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write(build(theme))
+        print(f"  architecture-{name}.svg")
 
 
-def raw(cid, value, style, x, y, w, h):
-    cells.append(
-        '        <mxCell id="%s" value="%s" style="%s" vertex="1" parent="1">'
-        '<mxGeometry x="%d" y="%d" width="%d" height="%d" as="geometry"/></mxCell>'
-        % (cid, value, style, x, y, w, h))
-
-
-def container(cid, label, colour, x, y, w, h, fill="none", fontsize=20,
-              dashed=False, indent=58):
-    style = ("rounded=0;whiteSpace=wrap;html=1;fillColor=%s;strokeColor=%s;"
-             "strokeWidth=%s;fontColor=%s;align=left;verticalAlign=top;"
-             "spacingTop=12;spacingLeft=%d;fontStyle=1;fontSize=%d;"
-             % (fill, colour, "2.5" if dashed else "2", colour, indent, fontsize))
-    if dashed:
-        style += "dashed=1;dashPattern=8 6;"
-    raw(cid, esc(label), style, x, y, w, h)
-
-
-def badge(cid, glyph, colour, x, y, size=34):
-    raw(cid, "", recolour(ICONS[GLYPH[glyph]], colour), x, y, size, size)
-
-
-def card(cid, glyph, colour, title, lines, x, y, w, h, tail=None):
-    """A rounded white card: glyph on the left, title and detail lines right."""
-    raw(cid, "", "rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;"
-                 "strokeColor=%s;strokeWidth=2;" % colour, x, y, w, h)
-    badge(cid + "_i", glyph, colour, x + 26, y + (h - 52) // 2, 52)
-
-    head = '&lt;b style=&quot;font-size:22px&quot;&gt;%s&lt;/b&gt;' % esc(title)
-    if tail:
-        head += ('&lt;span style=&quot;font-size:16px;color:%s&quot;&gt;&amp;nbsp;'
-                 '%s&lt;/span&gt;' % (colour, esc(tail)))
-    body = "".join(
-        '&lt;br&gt;&lt;span style=&quot;font-size:15px;color:%s&quot;&gt;%s'
-        '&lt;/span&gt;' % (MUTED, esc(l)) for l in lines)
-
-    raw(cid + "_t", head + body,
-        "text;html=1;align=left;verticalAlign=middle;fillColor=none;"
-        "strokeColor=none;fontColor=%s;" % NAVY,
-        x + 92, y + 10, w - 112, h - 20)
-
-
-def edge(cid, src, dst, label, colour, exit_xy, entry_xy, dashed=False,
-         dotted=False, width="2.5", fontsize=16):
-    style = ("edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=%s;"
-             "strokeWidth=%s;fontColor=%s;fontSize=%d;fontStyle=1;"
-             "exitX=%s;exitY=%s;exitDx=0;exitDy=0;entryX=%s;entryY=%s;"
-             "entryDx=0;entryDy=0;labelBackgroundColor=#FFFFFF;"
-             % (colour, width, colour, fontsize,
-                exit_xy[0], exit_xy[1], entry_xy[0], entry_xy[1]))
-    style += "endArrow=none;" if dotted else "endArrow=classic;"
-    if dashed:
-        style += "dashed=1;dashPattern=8 6;"
-    if dotted:
-        style += "dashed=1;dashPattern=1 4;"
-    cells.append(
-        '        <mxCell id="%s" value="%s" style="%s" edge="1" parent="1" '
-        'source="%s" target="%s"><mxGeometry relative="1" as="geometry"/></mxCell>'
-        % (cid, esc(label), style, src, dst))
-
-
-# ==============================================================================
-# Layout
-# ==============================================================================
-
-raw("frame", "", "rounded=0;fillColor=#FFFFFF;strokeColor=none;", 0, 0, 1920, 1080)
-
-container("region", "Google Cloud  \u2014  us-central1", NAVY,
-          340, 60, 1540, 985, dashed=True, fontsize=24)
-badge("region_i", "cloud", NAVY, 356, 74)
-
-container("vpc", "VPC  \u2014  vscode-vpc", NAVY, 380, 140, 1470, 870,
-          fill="#F8FAFC", fontsize=20)
-badge("vpc_i", "vpc", NAVY, 396, 154)
-
-# --- browser, outside the cloud boundary -------------------------------------
-card("c_br", "browser", NAVY, "Browser",
-     ["one session per user"], 40, 292, 280, 120)
-
-# --- the front door. Global, so it sits in the VPC but outside the subnet:
-#     a GCP external LB is not subnet-scoped the way an ALB is. -------------
-card("c_lb", "lb", BLUE, "Global HTTPS Load Balancer",
-     ["443 \u00b7 self-signed cert with an IP SAN",
-      "cookie affinity \u00b7 /healthz \u00b7 80 redirects to 443"],
-     430, 210, 520, 130)
-
-# --- the subnet holds the things that actually have addresses ---------------
-container("sn", "vscode-subnet", RED, 410, 400, 560, 470,
-          fill="#FDF2F0", fontsize=16, indent=20)
-
-card("c_mig", "mig", RED, "VS Code Cluster",
-     ["Regional MIG \u00b7 e2-standard-2 \u00b7 2 \u2192 4",
-      "domain-joined at boot",
-      "scale-up only \u2014 no scale-in"],
-     430, 450, 520, 150)
-
-card("c_ad", "ad", GREEN, "Mini-AD Domain Controller",
-     ["Ubuntu \u00b7 Samba 4 \u00b7 DNS + Kerberos",
-      "vscode-users gates every sign-in"],
-     430, 700, 520, 140)
-
-# Present but off the path to an editor, so stated once and left alone.
-raw("aside",
-    '&lt;span style=&quot;font-size:15px;color:%s&quot;&gt;'
-    'Also in the VPC: a Windows admin host for ADUC, and a gateway '
-    're-exporting the share over SMB.&lt;/span&gt;' % MUTED,
-    "text;html=1;whiteSpace=wrap;align=left;verticalAlign=top;fillColor=none;"
-    "strokeColor=none;",
-    412, 890, 540, 70)
-
-# --- right column ------------------------------------------------------------
-card("c_img", "image", AMBER, "vscode-image", [
-    "code-server (MIT) + session broker baked in",
-    "/etc/pam.d/vscode wired to SSSD \u00b7 Open VSX pinned"],
-    1010, 210, 800, 130, tail="(Packer)")
-
-card("c_fs", "store", TEAL, "Cloud Filestore", [
-    "mounted at /home \u2014 files follow the user to any node",
-    "/nfs/extensions stages VSIX packages cluster-wide"],
-    1010, 420, 800, 130)
-
-container("detail", "Inside each cluster node", PURPLE,
-          1010, 620, 800, 330, fontsize=18, indent=20)
-
-card("c_brk", "broker", PURPLE, "session broker", [
-    "PAM auth, then systemd-run --uid as the real Linux user",
-    "reverse-proxies HTTP and the editor's WebSocket"],
-    1040, 670, 740, 110)
-
-card("c_cs", "code", PURPLE, "code-server", [
-    "one private process per user, --auth none on 127.0.0.1",
-    "editor state node-local at /var/lib/vscode/$USER"],
-    1040, 820, 740, 110)
-
-# --- edges -------------------------------------------------------------------
-edge("e_https", "c_br", "c_lb", "HTTPS 443", NAVY, ("1", "0.5"), ("0", "0.5"))
-edge("e_8080", "c_lb", "c_mig", "8080 \u00b7 sticky", NAVY,
-     ("0.5", "1"), ("0.5", "0"))
-edge("e_auth", "c_mig", "c_ad", "PAM / SSSD \u00b7 Kerberos", GREEN,
-     ("0.5", "1"), ("0.5", "0"), dashed=True)
-edge("e_nfs", "c_mig", "c_fs", "NFS", TEAL, ("1", "0.72"), ("0", "0.5"))
-edge("e_boot", "c_img", "c_mig", "instances boot from", AMBER,
-     ("0", "0.5"), ("1", "0.18"), dashed=True, width="2")
-edge("e_spawn", "c_brk", "c_cs", "spawns \u00b7 loopback", PURPLE,
-     ("0.5", "1"), ("0.5", "0"), width="2")
-edge("e_zoom", "c_mig", "detail", "", MUTED,
-     ("1", "0.85"), ("0", "0.1"), dotted=True, width="2")
-
-
-# ==============================================================================
-# Emit
-# ==============================================================================
-
-doc = ('<mxfile host="app.diagrams.net">\n'
-       '  <diagram name="Architecture" id="gcp-vscode-cluster">\n'
-       '    <mxGraphModel dx="1600" dy="1000" grid="0" gridSize="10" guides="1" '
-       'tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" '
-       'pageWidth="1920" pageHeight="1080" math="0" shadow="0">\n'
-       '      <root>\n'
-       '        <mxCell id="0"/>\n'
-       '        <mxCell id="1" parent="0"/>\n'
-       + "\n".join(cells) +
-       '\n      </root>\n'
-       '    </mxGraphModel>\n'
-       '  </diagram>\n'
-       '</mxfile>\n')
-
-io.open(OUT, "w", encoding="utf-8", newline="\n").write(doc)
-print("wrote %s (%d cells)" % (OUT, len(cells)))
+if __name__ == "__main__":
+    main()

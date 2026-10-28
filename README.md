@@ -28,7 +28,15 @@ same files no matter which node the load balancer sends them to.
    provides authentication and DNS, so logins are domain-based and centrally
    managed.
 
-![GCP VS Code Cluster](gcp-vscode-cluster.png)
+## Architecture
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="architecture-dark.svg">
+  <img alt="VS Code users sign in from a browser to vscode-alb, a global external HTTPS load balancer with a self-signed certificate for its IP and cookie session affinity; port 80 redirects to 443. It forwards to port 8080 on the session broker on each node of vscode-instance-group, a managed instance group of one to four e2-standard-2 VMs built from a Packer image. The broker authenticates the user against the mini-AD Samba domain controller through PAM and SSSD, starts a code-server process under the user's own UID and proxies to it. Home directories and /nfs come from the vscode-nfs-server Filestore share. Nodes read the domain join password from Secret Manager. Administrators RDP to a Windows host, which maps the NFS gateway's Samba share of the same Filestore as drive Z:." src="architecture-light.svg">
+</picture>
+
+Regenerate with `python3 make_diagram.py`. The gateway and Windows host also
+join the domain; those lines are left off the diagram to keep it readable.
 
 ## Prerequisites
 
@@ -211,8 +219,8 @@ The domain controller provisions **sample users and groups** via Terraform templ
 | Group Name    | Category  | Scope     | gidNumber |
 |---------------|-----------|----------|-----------|
 | vscode-users  | Security  | Universal | 10001 |
-| india         | Security  | Universal | 10002 |
-| us            | Security  | Universal | 10003 |
+| us            | Security  | Universal | 10002 |
+| india         | Security  | Universal | 10003 |
 | linux-admins  | Security  | Universal | 10004 |
 | vscode-admins  | Security  | Universal | 10005 |
 
